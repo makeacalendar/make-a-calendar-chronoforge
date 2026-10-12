@@ -143,6 +143,7 @@ The Gregorian date engine delegates civil-date validity and ISO week calculation
 ```sh
 mix deps.get
 mix test
+mix credo
 mix format --check-formatted
 mix compile --warnings-as-errors
 mix docs
