@@ -114,7 +114,7 @@ defmodule MakeACalendar.ChronoForge.Holidays do
     ]
 
     (fixed ++ moving)
-    |> Enum.filter(fn {_, date, start_year} -> year >= start_year && date <= Date.new!(year, 12, 31) end)
+    |> Enum.filter(fn {_, date, start_year} -> year >= start_year && Date.compare(date, Date.new!(year, 12, 31)) in [:lt, :eq] end)
     |> Enum.map(fn {name, actual, _} -> %{name: name, actual: actual, observed: observed(actual)} end)
   end
   def us_federal(_), do: []
@@ -148,12 +148,12 @@ defmodule MakeACalendar.ChronoForge.BusinessDays do
   @spec count(Date.t(), Date.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
   def count(first, last, opts \\ [])
   def count(%Date{} = first, %Date{} = last, opts) do
-    with :ok <- if(first <= last, do: :ok, else: {:error, :reversed_range}),
+    with :ok <- if(Date.compare(first, last) in [:lt, :eq], do: :ok, else: {:error, :reversed_range}),
          {:ok, working} <- workweek(Keyword.get(opts, :workweek, MapSet.to_list(@weekdays))),
          {:ok, bounds} <- bounds(first, last, Keyword.get(opts, :include, :both)) do
       holidays = holiday_set(bounds, opts)
       {range_start, range_end} = bounds
-      total = if range_start > range_end, do: 0, else: Enum.count(Date.range(range_start, range_end), fn date -> MapSet.member?(working, Date.day_of_week(date)) and not MapSet.member?(holidays, date) end)
+      total = if Date.compare(range_start, range_end) == :gt, do: 0, else: Enum.count(Date.range(range_start, range_end), fn date -> MapSet.member?(working, Date.day_of_week(date)) and not MapSet.member?(holidays, date) end)
       {:ok, total}
     else
       {:error, _} = error -> error
@@ -201,7 +201,7 @@ defmodule MakeACalendar.ChronoForge.BusinessDays do
       :neither -> {Date.add(first, 1), Date.add(last, -1)}
       _ -> {nil, nil}
     end
-    if left && left <= right, do: {:ok, {left, right}}, else: if(left, do: {:ok, {left, left |> Date.add(-1)}} , else: {:error, :invalid_inclusion})
+    if left && Date.compare(left, right) in [:lt, :eq], do: {:ok, {left, right}}, else: if(left, do: {:ok, {left, Date.add(left, -1)}} , else: {:error, :invalid_inclusion})
   end
   defp holiday_set({first, last}, opts), do: holiday_set(first, last, opts)
   defp holiday_set(first, last, opts) do
@@ -219,11 +219,14 @@ defmodule MakeACalendar.ChronoForge.Recurrence do
   @doc "Generates occurrences between inclusive `from` and `until`, stopping at `count` or the hard safety limit."
   @spec occurrences(map(), Date.t(), Date.t(), keyword()) :: {:ok, [Date.t()]} | {:error, term()}
   def occurrences(rule, from, until, opts \\ [])
-  def occurrences(rule, %Date{} = from, %Date{} = until, opts) when from <= until do
+  def occurrences(rule, %Date{} = from, %Date{} = until, opts) do
     limit = Keyword.get(opts, :limit, @max_occurrences)
     count = Keyword.get(opts, :count, limit)
-    if not (is_integer(limit) and limit in 1..@max_occurrences and is_integer(count) and count > 0), do: {:error, :invalid_limit}, else:
-      do_occurrences(rule, from, until, min(count, limit))
+    cond do
+      Date.compare(from, until) == :gt -> {:error, :invalid_range}
+      not (is_integer(limit) and limit in 1..@max_occurrences and is_integer(count) and count > 0) -> {:error, :invalid_limit}
+      true -> do_occurrences(rule, from, until, min(count, limit))
+    end
   end
   def occurrences(_, _, _, _), do: {:error, :invalid_range}
 
@@ -231,7 +234,7 @@ defmodule MakeACalendar.ChronoForge.Recurrence do
     do: step_dates(Date.add(from, 0), until, n, limit, [])
   defp do_occurrences(%{frequency: :week, interval: n, weekdays: days}, from, until, limit) when is_integer(n) and n > 0 and is_list(days) do
     if Enum.all?(days, &(&1 in 1..7)) do
-      dates = Date.range(from, until) |> Enum.filter(fn d -> rem(Date.diff(d, from), 7 * n) < 7 and Date.day_of_week(d) in days end)
+      dates = Date.range(from, until) |> Stream.filter(fn d -> rem(Date.diff(d, from), 7 * n) < 7 and Date.day_of_week(d) in days end) |> Enum.take(limit)
       {:ok, Enum.take(dates, limit)}
     else
       {:error, :invalid_weekdays}
@@ -249,13 +252,16 @@ defmodule MakeACalendar.ChronoForge.Recurrence do
     end)
   end
   defp do_occurrences(_, _, _, _), do: {:error, :invalid_rule}
-  defp step_dates(date, until, _step, _limit, acc) when date > until, do: {:ok, Enum.reverse(acc)}
   defp step_dates(_date, _until, _step, 0, acc), do: {:ok, Enum.reverse(acc)}
-  defp step_dates(date, until, step, limit, acc), do: step_dates(Date.add(date, step), until, step, limit - 1, [date | acc])
+  defp step_dates(date, until, step, limit, acc) do
+    if Date.compare(date, until) == :gt,
+      do: {:ok, Enum.reverse(acc)},
+      else: step_dates(Date.add(date, step), until, step, limit - 1, [date | acc])
+  end
   defp month_dates(from, until, interval, limit, build) do
     start = from.year * 12 + from.month - 1
     stop = until.year * 12 + until.month - 1
-    result = Stream.iterate(start, &(&1 + interval)) |> Stream.take_while(&(&1 <= stop)) |> Enum.map(fn i -> build.(div(i, 12), rem(i, 12) + 1) end) |> Enum.reject(&is_nil/1) |> Enum.filter(&(&1 >= from and &1 <= until)) |> Enum.take(limit)
+    result = Stream.iterate(start, &(&1 + interval)) |> Stream.take_while(&(&1 <= stop)) |> Stream.map(fn i -> build.(div(i, 12), rem(i, 12) + 1) end) |> Stream.reject(&is_nil/1) |> Stream.filter(&(Date.compare(&1, from) in [:gt, :eq] and Date.compare(&1, until) in [:lt, :eq])) |> Enum.take(limit)
     {:ok, result}
   end
 end
@@ -266,7 +272,10 @@ defmodule MakeACalendar.ChronoForge.Payroll do
   @doc "Builds nominal dates from an anchor; `:semi_monthly` requires `days: {first, second}`."
   @spec schedule(Date.t(), Date.t(), atom(), keyword()) :: {:ok, [%{nominal: Date.t(), payment: Date.t()}]} | {:error, term()}
   def schedule(from, through, frequency, opts \\ [])
-  def schedule(%Date{} = from, %Date{} = through, frequency, opts) when from <= through do
+  def schedule(%Date{} = from, %Date{} = through, frequency, opts) do
+    if Date.compare(from, through) == :gt do
+      {:error, :invalid_range}
+    else
     nominal = case frequency do
       :weekly -> interval_dates(from, through, 7)
       :biweekly -> interval_dates(from, through, 14)
@@ -292,13 +301,18 @@ defmodule MakeACalendar.ChronoForge.Payroll do
       {:error, _} = error -> error
       _ -> {:error, :invalid_schedule}
     end
+    end
   end
   def schedule(_, _, _, _), do: {:error, :invalid_range}
 
-  defp interval_dates(from, through, step), do: Stream.iterate(from, &Date.add(&1, step)) |> Enum.take_while(&(&1 <= through))
+  defp interval_dates(from, through, step), do: interval_dates(from, through, step, [])
+  defp interval_dates(date, through, _step, acc) when date == through, do: Enum.reverse([date | acc])
+  defp interval_dates(date, through, step, acc) do
+    if Date.compare(date, through) == :gt, do: Enum.reverse(acc), else: interval_dates(Date.add(date, step), through, step, [date | acc])
+  end
   defp semi_monthly(from, through, {a, b}) when a in 1..28 and b in 1..31 do
     months = (from.year * 12 + from.month - 1)..(through.year * 12 + through.month - 1)
-    for index <- months, day <- [a, b], date = Date.new!(div(index, 12), rem(index, 12) + 1, min(day, Date.days_in_month(Date.new!(div(index, 12), rem(index, 12) + 1, 1)))), date >= from and date <= through, do: date
+    for index <- months, day <- [a, b], date = Date.new!(div(index, 12), rem(index, 12) + 1, min(day, Date.days_in_month(Date.new!(div(index, 12), rem(index, 12) + 1, 1)))), Date.compare(date, from) in [:gt, :eq] and Date.compare(date, through) in [:lt, :eq], do: date
   end
   defp semi_monthly(_, _, _), do: {:error, :invalid_semi_monthly_days}
   defp monthly(from, through, day, policy) when day in 1..31 and policy in [:last, :skip] do
@@ -316,7 +330,7 @@ defmodule MakeACalendar.ChronoForge.Payroll do
 
       if chosen do
         date = Date.new!(first.year, first.month, chosen)
-        if date >= from and date <= through, do: [date], else: []
+        if Date.compare(date, from) in [:gt, :eq] and Date.compare(date, through) in [:lt, :eq], do: [date], else: []
       else
         []
       end
@@ -340,7 +354,10 @@ defmodule MakeACalendar.ChronoForge.Shift do
   @doc "Returns `{:ok, [date: :on | :off]}` for an inclusive range. The anchor is cycle day zero."
   @spec dates(Date.t(), Date.t(), Date.t(), atom() | [0 | 1], keyword()) :: {:ok, [{Date.t(), :on | :off}]} | {:error, term()}
   def dates(anchor, from, through, pattern, opts \\ [])
-  def dates(%Date{} = anchor, %Date{} = from, %Date{} = through, pattern, opts) when from <= through do
+  def dates(%Date{} = anchor, %Date{} = from, %Date{} = through, pattern, opts) do
+    if Date.compare(from, through) == :gt do
+      {:error, :invalid_range}
+    else
     mask = if is_atom(pattern), do: Map.get(@patterns, pattern), else: pattern
     phase = Keyword.get(opts, :phase, 0)
     if is_list(mask) and mask != [] and Enum.all?(mask, &(&1 in [0, 1])) and is_integer(phase) do
@@ -351,6 +368,7 @@ defmodule MakeACalendar.ChronoForge.Shift do
       {:ok, result}
     else
       {:error, :invalid_pattern}
+    end
     end
   end
   def dates(_, _, _, _, _), do: {:error, :invalid_range}
@@ -474,7 +492,7 @@ defmodule MakeACalendar.ChronoForge.ICS do
   def export(events, opts) when is_list(events) do
     with {:ok, rows} <- normalize(events) do
       now = Keyword.get(opts, :dtstamp, DateTime.utc_now())
-      lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Make a Calendar//ChronoForge 0.1.0//EN", "CALSCALE:GREGORIAN"] ++ Enum.flat_map(Enum.sort_by(rows, & &1.sort), &event_lines(&1, now)) ++ ["END:VCALENDAR"]
+      lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Make a Calendar//ChronoForge 0.1.0//EN", "CALSCALE:GREGORIAN"] ++ Enum.flat_map(Enum.sort_by(rows, &Date.to_gregorian_days(&1.sort)), &event_lines(&1, now)) ++ ["END:VCALENDAR"]
       {:ok, Enum.map_join(lines, "\r\n", &fold/1) <> "\r\n"}
     end
   end
@@ -485,7 +503,7 @@ defmodule MakeACalendar.ChronoForge.ICS do
       case event do
         %{uid: uid, summary: summary, start: %Date{} = start} when is_binary(uid) and is_binary(summary) ->
           finish = Map.get(event, :end, Date.add(start, 1))
-          if match?(%Date{}, finish) and finish >= start, do: {:cont, {:ok, [%{type: :date, uid: uid, summary: summary, start: start, finish: finish, description: Map.get(event, :description, ""), sort: start} | acc]}}, else: {:halt, {:error, :invalid_event_end}}
+          if match?(%Date{}, finish) and Date.compare(finish, start) in [:gt, :eq], do: {:cont, {:ok, [%{type: :date, uid: uid, summary: summary, start: start, finish: finish, description: Map.get(event, :description, ""), sort: start} | acc]}}, else: {:halt, {:error, :invalid_event_end}}
         %{uid: uid, summary: summary, start: %DateTime{} = start} when is_binary(uid) and is_binary(summary) ->
           finish = Map.get(event, :end, DateTime.add(start, 3600, :second))
           if match?(%DateTime{}, finish) and DateTime.compare(finish, start) != :lt, do: {:cont, {:ok, [%{type: :datetime, uid: uid, summary: summary, start: DateTime.shift_zone!(start, "Etc/UTC"), finish: DateTime.shift_zone!(finish, "Etc/UTC"), description: Map.get(event, :description, ""), sort: start} | acc]}}, else: {:halt, {:error, :invalid_event_end}}
