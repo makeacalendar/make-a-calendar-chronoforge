@@ -22,5 +22,7 @@ jobs:
       - run: mix deps.get
       - run: mix compile --warnings-as-errors
       - run: mix test
+      - name: Run example scripts
+        run: mix run examples/chronoforge_examples.exs
       - run: mix docs
       - run: mix hex.build
