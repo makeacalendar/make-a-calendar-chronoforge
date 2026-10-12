@@ -307,7 +307,7 @@ defmodule MakeACalendar.ChronoForge.Payroll do
   defp monthly(_, _, _, _), do: {:error, :invalid_monthly_day}
   defp then_adjust(date, dir, opts) do
     valid = fn d -> Date.day_of_week(d) in Keyword.get(opts, :workweek, [1, 2, 3, 4, 5]) and d not in Keyword.get(opts, :exclude_dates, []) and not (Keyword.get(opts, :holidays) == :us_federal and d in Enum.flat_map((d.year - 1)..(d.year + 1), &Enum.map(MakeACalendar.ChronoForge.Holidays.us_federal(&1), fn h -> h.observed end))) end
-    walk_adjust(date, dir, valid, 0)
+    walk_adjust(date, dir, valid, 10_000)
   end
   defp walk_adjust(date, _dir, valid, 0), do: if(valid.(date), do: {:ok, date}, else: {:error, :adjustment_limit})
   defp walk_adjust(date, dir, valid, remaining) do
@@ -378,15 +378,15 @@ defmodule MakeACalendar.ChronoForge.Conversions do
   @filetime_epoch Date.new!(1601, 1, 1)
 
   @doc "Converts an Excel serial in the 1900 or 1904 system to a date and fractional day."
-  @spec excel(number(), :1900 | :1904) :: {:ok, %{date: Date.t(), fraction: float()}} | {:error, term()}
-  def excel(serial, system \\ :1900) when is_number(serial) and serial >= 0 and system in [:1900, :1904] do
+  @spec excel(number(), 1900 | 1904) :: {:ok, %{date: Date.t(), fraction: float()}} | {:error, term()}
+  def excel(serial, system \\ 1900) when is_number(serial) and serial >= 0 and system in [1900, 1904] do
     whole = trunc(serial)
     fraction = serial - whole
     cond do
-      system == :1900 and whole == 60 -> {:error, :fictitious_excel_date}
+      system == 1900 and whole == 60 -> {:error, :fictitious_excel_date}
       true ->
-        days = if system == :1900 and whole > 60, do: whole - 1, else: whole
-        base = if system == :1900, do: @excel_1900, else: @excel_1904
+        days = if system == 1900 and whole > 60, do: whole - 1, else: whole
+        base = if system == 1900, do: @excel_1900, else: @excel_1904
         {:ok, %{date: Date.add(base, days), fraction: fraction}}
     end
   end
