@@ -128,7 +128,7 @@ Call these pure functions from contexts or supervised tasks. Validate HTTP input
 
 ## Supported Elixir/OTP versions
 
-The package targets Elixir `~> 1.14` and the corresponding supported OTP releases. This initial source snapshot has not yet been compiled in the current authoring environment; the CI workflow is configured to compile and run ExUnit on Elixir 1.14 and 1.18 with OTP 25 and 27.
+The package targets Elixir `~> 1.14`. CI compiles the project, runs ExUnit, builds the documentation, and builds the Hex archive on Elixir 1.14 / OTP 25 and Elixir 1.18 / OTP 27.
 
 ## Accuracy and limitations
 
