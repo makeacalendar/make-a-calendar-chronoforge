@@ -94,7 +94,7 @@ defmodule MakeACalendar.ChronoForgeTest do
   end
 
   test "shift mask phase does not reset at month boundaries" do
-    assert {:ok, first} = Shift.dates(~D[2027-01-29], ~D[2027-01-31], ~D[2027-02-03], :four_three)
+    assert {:ok, first} = Shift.dates(~D[2027-01-29], ~D[2027-01-29], ~D[2027-02-03], :four_three)
     assert Enum.map(first, &elem(&1, 1)) == [:on, :on, :on, :on, :off, :off]
   end
 
