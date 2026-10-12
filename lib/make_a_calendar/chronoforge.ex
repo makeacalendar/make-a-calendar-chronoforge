@@ -299,10 +299,24 @@ defmodule MakeACalendar.ChronoForge.Payroll do
   defp semi_monthly(_, _, _), do: {:error, :invalid_semi_monthly_days}
   defp monthly(from, through, day, policy) when day in 1..31 and policy in [:last, :skip] do
     months = (from.year * 12 + from.month - 1)..(through.year * 12 + through.month - 1)
-    for index <- months,
-        first = Date.new!(div(index, 12), rem(index, 12) + 1, 1),
-        chosen = if day <= Date.days_in_month(first), do: day, else: if(policy == :last, do: Date.days_in_month(first), else: nil),
-        not is_nil(chosen), date = Date.new!(first.year, first.month, chosen), date >= from and date <= through, do: date
+    Enum.flat_map(months, fn index ->
+      first = Date.new!(div(index, 12), rem(index, 12) + 1, 1)
+      month_end = Date.days_in_month(first)
+
+      chosen =
+        cond do
+          day <= month_end -> day
+          policy == :last -> month_end
+          true -> nil
+        end
+
+      if chosen do
+        date = Date.new!(first.year, first.month, chosen)
+        if date >= from and date <= through, do: [date], else: []
+      else
+        []
+      end
+    end)
   end
   defp monthly(_, _, _, _), do: {:error, :invalid_monthly_day}
   defp then_adjust(date, dir, opts) do
