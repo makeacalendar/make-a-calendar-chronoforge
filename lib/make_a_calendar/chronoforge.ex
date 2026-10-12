@@ -26,7 +26,7 @@ defmodule MakeACalendar.ChronoForge do
 
   @doc "Returns the ISO week-year and week number for a date."
   @spec iso_week(Date.t()) :: {integer(), pos_integer()}
-  def iso_week(%Date{} = date), do: Date.iso_week(date)
+  def iso_week(%Date{} = date), do: :calendar.iso_week_number(Date.to_erl(date))
 
   @doc "Returns a date's one-based ordinal day within its Gregorian year."
   @spec ordinal(Date.t()) :: pos_integer()
@@ -142,10 +142,12 @@ end
 defmodule MakeACalendar.ChronoForge.BusinessDays do
   @moduledoc "Business-day counting and arithmetic with explicit endpoint rules."
   @weekdays MapSet.new([1, 2, 3, 4, 5])
+  alias MakeACalendar.ChronoForge.Holidays
 
   @doc "Counts business dates in an inclusive or exclusive range. Default includes both endpoints."
   @spec count(Date.t(), Date.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
-  def count(%Date{} = first, %Date{} = last, opts \\ []) do
+  def count(first, last, opts \\ [])
+  def count(%Date{} = first, %Date{} = last, opts) do
     with :ok <- if(first <= last, do: :ok, else: {:error, :reversed_range}),
          {:ok, working} <- workweek(Keyword.get(opts, :workweek, MapSet.to_list(@weekdays))),
          {:ok, bounds} <- bounds(first, last, Keyword.get(opts, :include, :both)) do
@@ -162,7 +164,8 @@ defmodule MakeACalendar.ChronoForge.BusinessDays do
 
   @doc "Adds signed business days, counting from the day after the start (or before for negative values)."
   @spec add(Date.t(), integer(), keyword()) :: {:ok, Date.t()} | {:error, term()}
-  def add(%Date{} = start, amount, opts \\ []) when is_integer(amount) do
+  def add(start, amount, opts \\ [])
+  def add(%Date{} = start, amount, opts) when is_integer(amount) do
     with {:ok, working} <- workweek(Keyword.get(opts, :workweek, MapSet.to_list(@weekdays))) do
       holidays = holiday_set(Date.add(start, -abs(amount) - 370), Date.add(start, abs(amount) + 370), opts)
       direction = if amount < 0, do: -1, else: 1
@@ -215,7 +218,8 @@ defmodule MakeACalendar.ChronoForge.Recurrence do
 
   @doc "Generates occurrences between inclusive `from` and `until`, stopping at `count` or the hard safety limit."
   @spec occurrences(map(), Date.t(), Date.t(), keyword()) :: {:ok, [Date.t()]} | {:error, term()}
-  def occurrences(rule, %Date{} = from, %Date{} = until, opts \\ []) when from <= until do
+  def occurrences(rule, from, until, opts \\ [])
+  def occurrences(rule, %Date{} = from, %Date{} = until, opts) when from <= until do
     limit = Keyword.get(opts, :limit, @max_occurrences)
     count = Keyword.get(opts, :count, limit)
     if not (is_integer(limit) and limit in 1..@max_occurrences and is_integer(count) and count > 0), do: {:error, :invalid_limit}, else:
@@ -262,7 +266,8 @@ defmodule MakeACalendar.ChronoForge.Payroll do
 
   @doc "Builds nominal dates from an anchor; `:semi_monthly` requires `days: {first, second}`."
   @spec schedule(Date.t(), Date.t(), atom(), keyword()) :: {:ok, [%{nominal: Date.t(), payment: Date.t()}]} | {:error, term()}
-  def schedule(%Date{} = from, %Date{} = through, frequency, opts \\ []) when from <= through do
+  def schedule(from, through, frequency, opts \\ [])
+  def schedule(%Date{} = from, %Date{} = through, frequency, opts) when from <= through do
     nominal = case frequency do
       :weekly -> interval_dates(from, through, 7)
       :biweekly -> interval_dates(from, through, 14)
@@ -335,7 +340,8 @@ defmodule MakeACalendar.ChronoForge.Shift do
 
   @doc "Returns `{:ok, [date: :on | :off]}` for an inclusive range. The anchor is cycle day zero."
   @spec dates(Date.t(), Date.t(), Date.t(), atom() | [0 | 1], keyword()) :: {:ok, [{Date.t(), :on | :off}]} | {:error, term()}
-  def dates(%Date{} = anchor, %Date{} = from, %Date{} = through, pattern, opts \\ []) when from <= through do
+  def dates(anchor, from, through, pattern, opts \\ [])
+  def dates(%Date{} = anchor, %Date{} = from, %Date{} = through, pattern, opts) when from <= through do
     mask = if is_atom(pattern), do: Map.get(@patterns, pattern), else: pattern
     phase = Keyword.get(opts, :phase, 0)
     if is_list(mask) and mask != [] and Enum.all?(mask, &(&1 in [0, 1])) and is_integer(phase) do
@@ -357,7 +363,8 @@ defmodule MakeACalendar.ChronoForge.Retail445 do
 
   @doc "Builds a fiscal year labelled by its starting Gregorian year; the 53rd week extends period 12."
   @spec fiscal_year(integer(), keyword()) :: {:ok, map()} | {:error, term()}
-  def fiscal_year(label, opts \\ []) when is_integer(label) do
+  def fiscal_year(label, opts \\ [])
+  def fiscal_year(label, opts) when is_integer(label) do
     pattern = Keyword.get(opts, :pattern, :four_four_five)
     weeks = @pattern[pattern]
     if is_nil(weeks) do
@@ -393,7 +400,8 @@ defmodule MakeACalendar.ChronoForge.Conversions do
 
   @doc "Converts an Excel serial in the 1900 or 1904 system to a date and fractional day."
   @spec excel(number(), 1900 | 1904) :: {:ok, %{date: Date.t(), fraction: float()}} | {:error, term()}
-  def excel(serial, system \\ 1900) when is_number(serial) and serial >= 0 and system in [1900, 1904] do
+  def excel(serial, system \\ 1900)
+  def excel(serial, system) when is_number(serial) and serial >= 0 and system in [1900, 1904] do
     whole = trunc(serial)
     fraction = serial - whole
     cond do
@@ -463,7 +471,8 @@ defmodule MakeACalendar.ChronoForge.ICS do
 
   @doc "Serializes maps containing `:uid`, `:summary`, `:start` and optional `:end`, `:description`, `:dtstamp`."
   @spec export([map()], keyword()) :: {:ok, binary()} | {:error, term()}
-  def export(events, opts \\ []) when is_list(events) do
+  def export(events, opts \\ [])
+  def export(events, opts) when is_list(events) do
     with {:ok, rows} <- normalize(events) do
       now = Keyword.get(opts, :dtstamp, DateTime.utc_now())
       lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Make a Calendar//ChronoForge 0.1.0//EN", "CALSCALE:GREGORIAN"] ++ Enum.flat_map(Enum.sort_by(rows, & &1.sort), &event_lines(&1, now)) ++ ["END:VCALENDAR"]
@@ -507,7 +516,8 @@ defmodule MakeACalendar.ChronoForge.SVG do
 
   @doc "Renders a month map as an escaped, standalone SVG."
   @spec render(map(), keyword()) :: {:ok, binary()} | {:error, term()}
-  def render(%{weeks: weeks, weekdays: weekdays, year: year, month: month}, opts \\ []) do
+  def render(calendar, opts \\ [])
+  def render(%{weeks: weeks, weekdays: weekdays, year: year, month: month}, opts) do
     theme = Map.get(@themes, Keyword.get(opts, :theme, :editorial))
     case theme do
       {background, foreground, stroke} ->
@@ -537,7 +547,8 @@ defmodule MakeACalendar.ChronoForge.Batch do
 
   @doc "Runs jobs with bounded concurrency and timeout; result order follows input order by default."
   @spec run(Enumerable.t(), (term() -> term()), keyword()) :: {:ok, [term()]} | {:error, term()}
-  def run(enumerable, fun, opts \\ []) when is_function(fun, 1) do
+  def run(enumerable, fun, opts \\ [])
+  def run(enumerable, fun, opts) when is_function(fun, 1) do
     concurrency = Keyword.get(opts, :max_concurrency, System.schedulers_online())
     timeout = Keyword.get(opts, :timeout, 5_000)
     ordered = Keyword.get(opts, :ordered, true)
