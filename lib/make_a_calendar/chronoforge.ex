@@ -509,8 +509,8 @@ defmodule MakeACalendar.ChronoForge.SVG do
   @spec render(map(), keyword()) :: {:ok, binary()} | {:error, term()}
   def render(%{weeks: weeks, weekdays: weekdays, year: year, month: month}, opts \\ []) do
     theme = Map.get(@themes, Keyword.get(opts, :theme, :editorial))
-    if is_nil(theme), do: {:error, :invalid_theme}, else:
-      {background, foreground, stroke} = theme
+    case theme do
+      {background, foreground, stroke} ->
       width = 700
       cell_w = div(width, 7)
       cell_h = 88
@@ -524,6 +524,8 @@ defmodule MakeACalendar.ChronoForge.SVG do
         rect <> text(x + 8, y + 23, label, foreground, 15)
       end) end)
       {:ok, "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 700 #{44 + length(weeks) * cell_h}\" role=\"img\" aria-label=\"#{escape(title)} calendar\"><rect width=\"100%\" height=\"100%\" fill=\"#{background}\"/><text x=\"8\" y=\"28\" font-family=\"sans-serif\" font-size=\"20\" fill=\"#{foreground}\">#{escape(title)}</text>#{header}#{body}</svg>"}
+      nil -> {:error, :invalid_theme}
+    end
   end
   def render(_, _), do: {:error, :invalid_calendar}
   defp text(x, y, value, color, size), do: "<text x=\"#{x}\" y=\"#{y}\" font-family=\"sans-serif\" font-size=\"#{size}\" fill=\"#{color}\">#{escape(value)}</text>"
