@@ -85,6 +85,14 @@ defmodule MakeACalendar.ChronoForgeTest do
     assert Enum.map(skipped, & &1.nominal) == [~D[2027-01-31], ~D[2027-03-31]]
   end
 
+  test "payroll adjustment walks in the requested direction" do
+    assert {:ok, [payment]} = Payroll.schedule(~D[2027-01-02], ~D[2027-01-02], :weekly, adjust: :next_business_day)
+    assert payment == %{nominal: ~D[2027-01-02], payment: ~D[2027-01-04]}
+
+    assert {:ok, [payment]} = Payroll.schedule(~D[2027-01-03], ~D[2027-01-03], :weekly, adjust: :previous_business_day)
+    assert payment == %{nominal: ~D[2027-01-03], payment: ~D[2027-01-01]}
+  end
+
   test "shift mask phase does not reset at month boundaries" do
     assert {:ok, first} = Shift.dates(~D[2027-01-29], ~D[2027-01-31], ~D[2027-02-03], :four_three)
     assert Enum.map(first, &elem(&1, 1)) == [:on, :on, :on, :on, :off, :off]
@@ -103,7 +111,7 @@ defmodule MakeACalendar.ChronoForgeTest do
     assert {:ok, %{date: ~D[1900-01-01], fraction: 0.5}} = Conversions.excel(1.5)
     assert {:error, :fictitious_excel_date} = Conversions.excel(60)
     assert {:ok, %{date: ~D[1900-03-01]}} = Conversions.excel(61)
-    assert {:ok, %{date: ~D[1904-01-02]}} = Conversions.excel(1, :1904)
+    assert {:ok, %{date: ~D[1904-01-02]}} = Conversions.excel(1, 1904)
   end
 
   test "FILETIME epoch and Unix units convert without timestamp floats" do
