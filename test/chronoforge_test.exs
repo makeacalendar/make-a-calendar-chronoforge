@@ -44,7 +44,7 @@ defmodule MakeACalendar.ChronoForgeTest do
 
   test "business counts have explicit endpoint inclusion and holiday handling" do
     assert BusinessDays.count(~D[2027-01-01], ~D[2027-01-05]) == {:ok, 3}
-    assert BusinessDays.count(~D[2027-01-01], ~D[2027-01-05], include: :neither) == {:ok, 2}
+    assert BusinessDays.count(~D[2027-01-01], ~D[2027-01-05], include: :neither) == {:ok, 1}
     assert BusinessDays.count(~D[2027-01-01], ~D[2027-01-05], holidays: :us_federal) == {:ok, 2}
   end
 
