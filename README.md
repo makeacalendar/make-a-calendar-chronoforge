@@ -130,6 +130,10 @@ Call these pure functions from contexts or supervised tasks. Validate HTTP input
 
 The package targets Elixir `~> 1.14`. CI compiles the project, runs ExUnit, builds the documentation, and builds the Hex archive on Elixir 1.14 / OTP 25 and Elixir 1.18 / OTP 27.
 
+## Examples
+
+The [runnable example script](examples/chronoforge_examples.exs) demonstrates monthly grids, business days, recurrence, payroll, rotating shifts, 4-4-5 periods, date conversions, iCalendar and SVG output, and bounded batch execution. CI runs it with `mix run`.
+
 ## Accuracy and limitations
 
 The Gregorian date engine delegates civil-date validity and ISO week calculations to Elixir's `Date`. Federal holiday rules are provided for common modern observances, not as a legal source or universal closure calendar. Pay schedules are calendar plans only; they do not calculate pay, taxes, overtime, or labor-law compliance. Shift rotations describe on/off civil dates only. Fiscal mapping is an explicit retail convention.
