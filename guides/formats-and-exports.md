@@ -3,7 +3,7 @@
 External date numbers often embed an epoch and unit. Keep those inputs explicit instead of converting through floating point timestamps.
 
 ```elixir
-Conversions.excel(60, :1900)
+ Conversions.excel(60, 1900)
 # => {:error, :fictitious_excel_date}
 
 Conversions.filetime(0)
