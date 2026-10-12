@@ -262,7 +262,6 @@ end
 
 defmodule MakeACalendar.ChronoForge.Payroll do
   @moduledoc "Nominal and adjusted pay dates for weekly, biweekly and semi-monthly plans."
-  alias MakeACalendar.ChronoForge.BusinessDays
 
   @doc "Builds nominal dates from an anchor; `:semi_monthly` requires `days: {first, second}`."
   @spec schedule(Date.t(), Date.t(), atom(), keyword()) :: {:ok, [%{nominal: Date.t(), payment: Date.t()}]} | {:error, term()}
